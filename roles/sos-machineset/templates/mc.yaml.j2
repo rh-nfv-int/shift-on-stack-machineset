@@ -1,0 +1,29 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: {{ mc_name|default('99-dhcp-reconfigure') }}
+spec:
+  config:
+    ignition:
+      version: 2.2.0
+{% if systemd %}
+    systemd:
+      units:
+{% for item in systemd %}
+      - name: {{ item.name }}
+        enabled: true
+        contents: |
+          {{ item.source|indent(10) }}
+{% endfor %}
+{% endif %}
+    storage:
+      files:
+{% for item in contents %}
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,{{ item.source|b64encode }}
+        filesystem: root
+        mode: {{ item.mode|default('0644') }}
+        path: {{ item.name }}
+{% endfor %}

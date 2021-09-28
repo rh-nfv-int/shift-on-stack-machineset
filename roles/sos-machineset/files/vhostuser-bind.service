@@ -1,0 +1,10 @@
+[Unit]
+Description=Vhostuser Interface vfio-pci Bind
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/vhostuser-bind.conf
+ExecStart=/usr/local/bin/vhostuser $ARG
+
+[Install]
+WantedBy=multi-user.target
