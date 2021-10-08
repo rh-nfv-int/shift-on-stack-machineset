@@ -5,26 +5,11 @@
 
 - name: extract variables
   set_fact:
-    number_of_replicas: 2
     infrastructure_id: "{{ metadata.infraID }}"
-    node_role: "worker"
-    nova_flavor: "ocp-worker"
+    # The openshift-install default name for the glance image
+    # Can be overriden if needed
     glance_image_name_or_location: "{{ metadata.infraID }}-rhcos"
-    machines_subnet_UUID: "6a295ed7-9464-43d1-8523-bcd6f7711370"
-    additional_networks:
-      - network_UUID: "05015607-2a94-4399-a25e-27318597bdca"
-        name_suffix: "uplink1"
-        subnet_UUID: "dd3303e4-3ad1-4a14-9b94-cb80c3db3f1f"
-        tags:
-          - tag1
-        vnic_type: "normal"
-      - network_UUID: "210a9de6-9330-4e12-8edd-f77da9bb30c6"
-        name_suffix: "uplink2"
-        subnet_UUID: "3f044c45-d192-4fb5-9523-d2933ce93078"
-        tags:
-          - tag1
-        vnic_type: "normal"
-  
+
 - name: render template
   set_fact:
     machineset: "{{ lookup('template', machineset_template_path) }}"
@@ -33,11 +18,16 @@
   debug:
     var: machineset
 
-- name: write machineset file
-  copy: 
-    content: "{{ machineset }}" 
-    dest: "ms.yaml"
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ build_output_dir }}"
+    state: directory
+    mode: "0755"
 
+- name: write machineset file
+  copy:
+    content: "{{ machineset }}"
+    dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ node_role }}-machineset.yaml"
 # - name: Get a list of all pods from any namespace
 #   kubernetes.core.k8s_info:
 #     kind: Pod

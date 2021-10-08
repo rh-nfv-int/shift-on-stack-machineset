@@ -57,6 +57,16 @@ spec:
           serverMetadata:
             Name: {{ infrastructure_id }}-{{ node_role }}
             openshiftClusterID: {{ infrastructure_id }}
+{% if additional_networks is defined and additional_networks|length > 0 %}
+            additional_networks:
+{%- endif %}            
+{% for item in additional_networks %}
+            - networkID: {{ item.network_UUID }} 
+              vnicType: {{ item.vnic_type }}
+{% if item.driver is defined %}
+              driver: {{ item.driver }}
+{%- endif%} 
+{%- endfor %} 
           tags:
           - openshiftClusterID={{ infrastructure_id }}
           trunk: true
