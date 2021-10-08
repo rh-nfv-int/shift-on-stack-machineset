@@ -1,0 +1,25 @@
+---
+- name: get additional network info
+  os_networks_info:
+    cloud: overcloud
+    name: "{{ item }}"
+  register: addon_network_info
+
+- name: fail if addon network is not found
+  fail:
+    msg: "Additional network {{ item }} is not found"
+  when: addon_network_info.openstack_networks|length != 1
+
+- name: create adddtional network details
+  set_fact:
+    addon_network_item_info:
+      network_UUID: "{{ addon_network_info.openstack_networks[0].id }}"
+      subnet_UUID: "{{ addon_network_info.openstack_networks[0].subnets[0] }}"
+      vnic_type: "normal"
+      name_suffix: "{{ addon_network_info.openstack_networks[0].name }}"
+      tags:
+      - "tag-{{ addon_network_info.openstack_networks[0].name }}"
+
+- name: append to additional networks
+  set_fact:
+    additional_networks:  "{{ additional_networks + [addon_network_item_info] }}"

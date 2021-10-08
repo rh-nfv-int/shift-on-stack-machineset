@@ -3,12 +3,51 @@
   set_fact:
     metadata: "{{ lookup('file', cluster_metadata_path) |from_json }}"
 
+- name: extract cluster variables
+  set_fact:
+    cluster_name: "{{ metadata.clusterName }}"
+    infrastructure_id: "{{ metadata.infraID }}"
+
+- name: fetch default network info
+  os_networks_info:
+    cloud: overcloud
+    name: "{{ infrastructure_id }}-*"
+  register: default_network_info
+
+- name: fail if default network is not valid
+  fail:
+    msg: "Default overcloud network is not found"
+  when: default_network_info.openstack_networks|length != 1
+
+- name: get default network id
+  set_fact:
+    default_network_id: "{{ default_network_info.openstack_networks[0].id }}"
+    default_network_subnet_id: "{{ default_network_info.openstack_networks[0].subnets[0] }}"
+
+- name: fail if additional_network_names is not valid
+  fail:
+    msg: "additional_network_names is not valid"
+  when: additional_network_names|default([])|length == 0
+
+- name: set fact for additional networks
+  set_fact:
+    additional_networks: []
+    names: "{{ additional_network_names }}"
+
+- name: split if input is tring
+  set_fact:
+    names: "{{ additional_network_names.split(',') }}"
+  when: additional_network_names is string
+
+- name: fetch addon network info
+  include_tasks: addon.yaml
+  loop: "{{ names }}"
+
 - name: extract variables
   set_fact:
     infrastructure_id: "{{ metadata.infraID }}"
     # The openshift-install default name for the glance image
     # Can be overriden if needed
-    glance_image_name_or_location: "{{ metadata.infraID }}-rhcos"
 
 - name: render template
   set_fact:
@@ -28,43 +67,3 @@
   copy:
     content: "{{ machineset }}"
     dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ node_role }}-machineset.yaml"
-# - name: Get a list of all pods from any namespace
-#   kubernetes.core.k8s_info:
-#     kind: Pod
-#   register: pod_list
-
-# - name: add service file to list
-#   set_fact:
-#     systemd:
-#       - name: "{{ bind_service_name }}"
-#         source: "{{ lookup('file', bind_service_file_path) }}"
-
-# - name: convert comman separated to space separated networks
-#   set_fact:
-#     network_ids_parsed: "{{ network_ids.split(',') | join(' ') }}"
-
-# - set_fact:
-#     network_resource_map: "{{ network_resource_map|combine({ item.0 : item.1 }) }}"
-#   with_together:
-#     - "{{ network_ids.split(',') }}"
-#     - "{{ resource_names.split(',') }}"
-
-# - name: create contents list
-#   set_fact:
-#     contents:
-#       - name: "{{ vfio_module_filename }}"
-#         source: "{{ lookup('file', vfio_module_file_path) }}"
-#       - name: "{{ exec_script_filename }}"
-#         source: "{{ lookup('file', exec_script_file_path) }}"
-#         mode: "0744"
-#       - name: "{{ nwid_conf_filename }}"
-#         source: "{{ lookup('template', nwid_conf_file_path) }}"
-
-# - name: create mc config
-#   k8s:
-#     definition: "{{ lookup('template', mc_file_path) }}"
-
-# # Change it to host-device plugin later
-# - name: create device plugin for vhostuser
-#   k8s:
-#     definition: "{{ lookup('template', 'sriov-device-plugin-ds.yaml') }}"
