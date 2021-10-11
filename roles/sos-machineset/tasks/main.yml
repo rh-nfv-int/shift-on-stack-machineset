@@ -7,6 +7,9 @@
   set_fact:
     cluster_name: "{{ metadata.clusterName }}"
     infrastructure_id: "{{ metadata.infraID }}"
+    # The openshift-install default name for the glance image
+    # Can be overriden if needed
+    glance_image_name_or_location: "{{ metadata.infraID }}-rhcos"
 
 - name: fetch default network info
   os_networks_info:
@@ -22,7 +25,7 @@
 - name: get default network id
   set_fact:
     default_network_id: "{{ default_network_info.openstack_networks[0].id }}"
-    default_network_subnet_id: "{{ default_network_info.openstack_networks[0].subnets[0] }}"
+    machines_subnet_UUID: "{{ default_network_info.openstack_networks[0].subnets[0] }}"
 
 - name: fail if additional_network_names is not valid
   fail:
