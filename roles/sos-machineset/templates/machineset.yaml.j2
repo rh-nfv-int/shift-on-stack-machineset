@@ -37,19 +37,19 @@ spec:
               - UUID: {{ machines_subnet_UUID }}
           ports:
 {% for item in additional_networks %}
-            - networkID: {{ item.network_UUID }} 
+            - networkID: {{ item.network_UUID }}
               nameSuffix: {{ item.name_suffix }}
               fixedIPs:
-                - subnetID: {{ item.subnet_UUID }} 
+                - subnetID: {{ item.subnet_UUID }}
               tags:
                 - {{ item.vnic_type }}
                 - netid_{{ item.network_UUID }}
 {% for tag in item.tags %}
                 - {{ tag }}
-{%- endfor %}              
-              vnicType: {{ item.vnic_type }} 
+{%- endfor %}
+              vnicType: {{ item.vnic_type }}
               portSecurity: false
-{% endfor %} 
+{% endfor %}
           primarySubnet: {{ machines_subnet_UUID }}
           securityGroups:
           - filter: {}
@@ -72,4 +72,4 @@ spec:
           trunk: true
           userDataSecret:
             name: {{ node_role }}-user-data
-          configDrive: true 
+          configDrive: true
