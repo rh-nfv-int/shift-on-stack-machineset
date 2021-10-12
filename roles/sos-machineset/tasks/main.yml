@@ -70,3 +70,18 @@
   copy:
     content: "{{ machineset }}"
     dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ node_role }}-machineset.yaml"
+
+#- name: create machineset block
+#  when: kubeconfig_path|length > 0
+#  block:
+#  - name: create machineset
+#    k8s:
+#      definition: "{{ machineset }}"
+#
+#  - name: wait for openstack server creation
+#    os_server_info:
+#      name: "{{ infrastructre_id }}-{{ node_role }}-*"
+#    register: server_list
+#    retries: 10
+#    delay: 5
+#    until: server_list.openstack_servers|length == number_of_replicas 

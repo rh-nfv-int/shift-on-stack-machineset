@@ -41,12 +41,6 @@ spec:
               nameSuffix: {{ item.name_suffix }}
               fixedIPs:
                 - subnetID: {{ item.subnet_UUID }}
-              tags:
-                - {{ item.vnic_type }}
-                - netid_{{ item.network_UUID }}
-{% for tag in item.tags %}
-                - {{ tag }}
-{%- endfor %}
               vnicType: {{ item.vnic_type }}
               portSecurity: false
 {% endfor %}
@@ -55,21 +49,11 @@ spec:
           - filter: {}
             name: {{ infrastructure_id }}-{{ node_role }}
           serverMetadata:
-            Name: {{ infrastructure_id }}-{{ node_role }}
+            name: {{ infrastructure_id }}-{{ node_role }}
             openshiftClusterID: {{ infrastructure_id }}
-{% if additional_networks is defined and additional_networks|length > 0 %}
-            additional_networks:
-{%- endif %}            
-{% for item in additional_networks %}
-            - networkID: {{ item.network_UUID }} 
-              vnicType: {{ item.vnic_type }}
-{% if item.driver is defined %}
-              driver: {{ item.driver }}
-{%- endif%} 
-{%- endfor %} 
           tags:
           - openshiftClusterID={{ infrastructure_id }}
           trunk: true
           userDataSecret:
-            name: {{ node_role }}-user-data
+            name: worker-user-data
           configDrive: true
