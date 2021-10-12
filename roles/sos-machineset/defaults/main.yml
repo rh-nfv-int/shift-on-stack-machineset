@@ -6,10 +6,6 @@ cluster_metadata_path: "metadata.json"
 # Number of nodes in machineset
 number_of_replicas: 2
 
-network_ids: ""
-resource_names: ""
-
-
 build_output_dir: "build"
 
 machineset_template_path: "machineset.yaml.j2"
