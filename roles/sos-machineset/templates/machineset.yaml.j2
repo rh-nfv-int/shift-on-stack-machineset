@@ -34,9 +34,9 @@ spec:
           kind: OpenstackProviderSpec
           networks:
             - subnets:
-              - UUID: {{ machines_subnet_UUID }}
+              - UUID: {{ machines_subnet_UUID | default( "{{ primary_subnet_UUID }}" ) }}
           ports:
-{% for item in additional_networks %}
+{% for item in additional_networks_mod %}
             - networkID: {{ item.network_UUID }} 
               nameSuffix: {{ item.name_suffix }}
               fixedIPs:
@@ -50,7 +50,7 @@ spec:
               vnicType: {{ item.vnic_type }} 
               portSecurity: false
 {% endfor %} 
-          primarySubnet: {{ machines_subnet_UUID }}
+          primarySubnet: {{ machines_subnet_UUID | default( "{{ primary_subnet_UUID }}" ) }}
           securityGroups:
           - filter: {}
             name: {{ infrastructure_id }}-{{ node_role }}

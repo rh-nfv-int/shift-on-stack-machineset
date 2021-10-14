@@ -1,5 +1,7 @@
 ---
-- name: parse metadata.json from the cluster deployment
+
+# Parse metadata.json to extract cluster-related data
+- name: parse metadata.json produced by the cluster deployment
   set_fact:
     metadata: "{{ lookup('file', cluster_metadata_path) |from_json }}"
 
@@ -10,13 +12,48 @@
     # Can be overriden if needed
     glance_image_name_or_location: "{{ metadata.infraID }}-rhcos"
 
+# Query the OpenStack deployment to verify network information
+# provided in the inventory.yaml file.  In addition, if the user
+# only provided a network name, lookup the network and substitute
+# the network UUID.  If no subnet UUID was provided, use the subnet
+# id from the lookup.  Subnet insertion assumes only a SINGLE subnet
+# on the referenced network.
+#
+- name: Gather/verify information about additional networks
+  openstack.cloud.networks_info:
+    name: "{{ item.network_UUID | default(item.name) }}"
+    cloud: "{{ openstack_cloud }}"
+  loop: "{{ additional_networks }}"
+  register: net_info
+  failed_when: net_info.openstack_networks|length == 0
+
+# Rebuild additional networks information using queried data
+- name: Build additionalNetworks with port lookups of UUID from additional_networks
+  set_fact:
+    additional_networks_mod: "{{ additional_networks_mod | default([]) + [ { 
+                    'name_suffix' : net.name_suffix,
+                    'network_UUID' : net_info.results[index].openstack_networks[0].id, 
+                    'subnet_UUID' : net.subnet_UUID|default(net_info.results[index].openstack_networks[0].subnets[0]),
+                    'vnic_type' : net.vnic_type|default(omit),
+                    'driver' : net.driver|default(omit),
+                    'tags' : net.tags
+                    } ] }}"
+  loop: "{{ additional_networks|flatten(levels=1) }}"
+  loop_control:
+    loop_var: net
+    index_var: index
+
+- name: lookup primary network
+  openstack.cloud.networks_info:
+    name: "{{ metadata.infraID }}-openshift"
+    cloud: "{{ openstack_cloud }}"
+  register: primary_info
+
 - name: render template
   set_fact:
+    primary_network_UUID: "{{ primary_info.openstack_networks[0].id }}"
+    primary_subnet_UUID: "{{ primary_info.openstack_networks[0].subnets[0] }}"
     machineset: "{{ lookup('template', machineset_template_path) }}"
-
-- name: Print out interfaces
-  debug:
-    var: machineset
 
 - name: Create a directory if it does not exist
   ansible.builtin.file:
@@ -28,6 +65,8 @@
   copy:
     content: "{{ machineset }}"
     dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ node_role }}-machineset.yaml"
+
+
 # - name: Get a list of all pods from any namespace
 #   kubernetes.core.k8s_info:
 #     kind: Pod

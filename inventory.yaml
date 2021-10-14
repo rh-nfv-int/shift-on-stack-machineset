@@ -7,6 +7,9 @@ all:
       # Number of worker nodes in machineset
       number_of_replicas: 2
 
+      # OpenStack cloud
+      openstack_cloud: "openstack"
+
       # OpenStack flavor to use for the creation of the nodes 
       nova_flavor: "ocp-worker"
       # Name of the node role for this machinset
@@ -15,20 +18,31 @@ all:
       # Name of glance image to use.  Defaults to `"{{ metadata.infraID }}-rhcos"`
       #glance_image_name_or_location: "path-to-metadata.json"
 
-      machines_subnet_UUID: "6a295ed7-9464-43d1-8523-bcd6f7711370"
+      # Subnet ID for openshift cluster network
+      # Defaults to "{{ metadata.infraID }}-openshift"
+      #machines_subnet_UUID: "6a295ed7-9464-43d1-8523-bcd6f7711370"
 
       additional_networks:
-      - network_UUID: "05015607-2a94-4399-a25e-27318597bdca"
+      - network_UUID: "60c4b0dd-065a-4f70-8eee-5e7c4a1b8b09"
         name_suffix: "uplink1"
-        subnet_UUID: "dd3303e4-3ad1-4a14-9b94-cb80c3db3f1f"
         tags:
           - tag1
         vnic_type: "normal"
-      - network_UUID: "210a9de6-9330-4e12-8edd-f77da9bb30c6"
+      - name: "uplink2"
         name_suffix: "uplink2"
-        subnet_UUID: "3f044c45-d192-4fb5-9523-d2933ce93078"
         tags:
           - tag1
         vnic_type: "normal"
         driver: "vfio-pci"
+      - network_UUID: "489b4c4d-86ea-4fd2-9a58-b8ec878b5a4c"
+        name_suffix: "radio_downlink"
+        tags:
+          - tag1
+        vnic_type: "direct"
+        driver: "vfio-pci"
+      - name: "radio_uplink"
+        name_suffix: "radio_uplink"
+        tags:
+          - tag1
+        vnic_type: "direct"
 
