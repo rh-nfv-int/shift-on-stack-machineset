@@ -22,6 +22,8 @@ spec:
         machine.openshift.io/cluster-api-machineset: {{ infrastructure_id }}-{{ node_role }}
     spec:
       metadata:
+        labels:
+          node-role.kubernetes.io/performance: fdp
       providerSpec:
         value:
           apiVersion: openstackproviderconfig.openshift.io/v1alpha1
@@ -44,6 +46,7 @@ spec:
               tags:
                 - {{ item.vnic_type }}
                 - netid_{{ item.network_UUID }}
+                - {{ item.driver }}
 {% for tag in item.tags %}
                 - {{ tag }}
 {%- endfor %}              

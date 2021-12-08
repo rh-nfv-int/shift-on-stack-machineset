@@ -26,27 +26,43 @@ all:
       # Defaults to "{{ metadata.infraID }}-openshift"
       #machines_subnet_UUID: "6a295ed7-9464-43d1-8523-bcd6f7711370"
 
+
+      # name: Name or UUID of the network to attach to the worker VM(s)
+      #       If a network name is given, the name is use to lookup the UUID
+      #       of the network in the current tenant.
+      # name_suffix: Trunking is enabled for ports that are created by 
+      #              entries in the networks and subnets lists. The names 
+      #              of ports that are created from these lists follow 
+      #              the pattern <machine_name>-<nameSuffix>. The 
+      #              nameSuffix field is required in port definitions.
+      #              When using the name of the network to attach,
+      #              nameSuffix should equal the name.
+      # tags: Additional tags added to the port.  By default the playbook will
+      #       1. add a tag for the UUID of the network in form netid_UUID.  
+      #       2. add a tag for the vnic_type
+      #       3. add a tag for the driver type
       additional_networks:
-      - network_UUID: "60c4b0dd-065a-4f70-8eee-5e7c4a1b8b09"
+      - name: "uplink1"
         name_suffix: "uplink1"
         tags:
-          - tag1
+          - uplink_input
         vnic_type: "normal"
       - name: "uplink2"
         name_suffix: "uplink2"
         tags:
-          - tag1
+          - uplink_output
         vnic_type: "normal"
         driver: "vfio-pci"
-      - network_UUID: "489b4c4d-86ea-4fd2-9a58-b8ec878b5a4c"
+      - name: "radio_downlink"
         name_suffix: "radio_downlink"
         tags:
-          - tag1
+          - downlink_input
         vnic_type: "direct"
         driver: "vfio-pci"
       - name: "radio_uplink"
         name_suffix: "radio_uplink"
         tags:
-          - tag1
+          - downlink_output
         vnic_type: "direct"
+        driver: "vfio-pci"
 

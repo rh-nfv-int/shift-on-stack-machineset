@@ -1,0 +1,27 @@
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  labels:
+    app: dpdk-app
+  name: ovs-dpdk-performanceprofile
+spec:
+  additionalKernelArgs:
+    - nmi_watchdog=0
+    - audit=0
+    - mce=off
+    - processor.max_cstate=1
+    - idle=poll
+    - intel_idle.max_cstate=0
+  cpu:
+    isolated: 2-3
+    reserved: 0-1
+  hugepages:
+    defaultHugepagesSize: 1G
+    pages:
+      - count: 8
+        node: 0
+        size: 1G
+  nodeSelector:
+    node-role.kubernetes.io/worker: ''
+  realTimeKernel:
+    enabled: false
