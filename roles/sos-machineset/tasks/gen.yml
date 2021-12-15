@@ -1,0 +1,162 @@
+---
+
+# - name: test1
+#   set_fact:
+#     stdout_lines: 
+#        - "../../devices/virtual/net/tun0_c6:a8:de:30:46:f2"
+#        - "../../devices/pci0000:00/0000:00:07.0/net/ens7_fa:16:3e:31:89:2b"
+#        - "../../devices/pci0000:00/0000:00:05.0/virtio2/net/ens5_fa:16:3e:67:69:8f"
+#        - "../../devices/pci0000:00/0000:00:03.0/virtio0/net/ens3_fa:16:3e:47:ab:35"
+#        - "../../devices/virtual/net/br0_9e:5e:32:1f:8e:4e"
+#        - "../../devices/virtual/net/ovs-system_a2:ee:28:28:a9:c7"
+#        - "../../devices/pci0000:00/0000:00:08.0/net/ens8_fa:16:3e:ab:f0:be"
+#        - "../../devices/virtual/net/vxlan_sys_4789_ca:9d:9d:d5:87:9f"
+#        - "../../devices/virtual/net/lo_00:00:00:00:00:00"
+#        - "../../devices/pci0000:00/0000:00:04.0/virtio1/net/ens4_fa:16:3e:f9:f3:87"
+#     mac_map: {
+#        'fa:16:3e:07:fd:3e': 'radio_downlink',
+#        'fa:16:3e:12:e8:7a': 'uplink2',
+#        'fa:16:3e:1b:c0:1d': 'radio_uplink',
+#        'fa:16:3e:31:89:2b': 'radio_downlink',
+#        'fa:16:3e:4b:4b:fd': 'uplink1',
+#        'fa:16:3e:63:3f:62': 'radio_uplink',
+#        'fa:16:3e:67:69:8f': 'uplink2',
+#        'fa:16:3e:ab:f0:be': 'radio_uplink',
+#        'fa:16:3e:bd:38:9e': 'radio_downlink',
+#        'fa:16:3e:e1:3f:c6': 'uplink2',
+#        'fa:16:3e:f9:f3:87': 'uplink1',
+#        'fa:16:3e:fa:ca:79': 'uplink1'
+#        }
+#     device_info:
+#     - interface: ens3
+#       mac_address: fa:16:3e:47:ab:35
+#       net: fa:16:3e:47:ab:35
+#       pci_address: '0000:00:03.0'
+#     - interface: ens4
+#       mac_address: fa:16:3e:f9:f3:87
+#       net: fa:16:3e:f9:f3:87
+#       pci_address: '0000:00:04.0'
+#     - interface: ens5
+#       mac_address: fa:16:3e:67:69:8f
+#       net: fa:16:3e:67:69:8f
+#       pci_address: '0000:00:05.0'
+
+
+# Parse metadata.json to extract cluster-related data
+- name: parse metadata.json produced by the cluster deployment
+  set_fact:
+    metadata: "{{ lookup('file', cluster_metadata_path) |from_json }}"
+
+- name: Extract meta variables
+  set_fact:
+    infrastructure_id: "{{ metadata.infraID }}"
+
+- name: Machine name
+  set_fact:
+    machineset_name: "{{ infrastructure_id }}-worker"
+
+- name: Gather and verify information about additional networks
+  openstack.cloud.networks_info:
+    name: "{{ item.name }}"
+    cloud: "{{ openstack_cloud }}"
+  loop: "{{ additional_networks }}"
+  register: net_info
+  failed_when: net_info.openstack_networks|length == 0
+
+# Rebuild additional networks information using queried data
+- name: Build additionalNetworks with port lookups of UUID from additional_networks
+  set_fact:
+    additional_networks_mod: "{{ additional_networks_mod | default([]) + [ { 
+                    'name' : net.name, 
+                    'name_suffix' : net.name_suffix,
+                    'network_UUID' : net_info.results[index].openstack_networks[0].id, 
+                    'subnet_UUID' : net.subnet_UUID|default(net_info.results[index].openstack_networks[0].subnets[0]),
+                    'vnic_type' : net.vnic_type|default(omit),
+                    'driver' : net.driver|default(omit),
+                    'tags' : net.tags
+                    } ] }}"
+  loop: "{{ additional_networks|flatten(levels=1) }}"
+  loop_control:
+    loop_var: net
+    index_var: index
+
+- name: Gather all ports connected to additional networks
+  openstack.cloud.port_info:
+    cloud: "{{ openstack_cloud }}"
+    filters:
+      network_id: "{{ item.network_UUID }}"
+  loop: "{{ additional_networks_mod }}"
+  register: port_info
+
+- name: Build port list
+  set_fact:
+    ports: "{{ ports | default([]) + [ {
+                       'net_name': item.item.name,
+                       'ports': item.openstack_ports
+                      }] 
+             }}"
+  loop: "{{ port_info.results }}"
+
+- name: Build mac/port dictionary
+  set_fact:
+    mac_map: "{{ mac_map | default({}) | combine ({ item.1.mac_address : item.0.item.name }) }}"
+  loop: "{{ port_info.results | subelements('openstack_ports') }}"
+  loop_control:
+    label: "{{ item.0.item.name }}"
+
+- name: Lookup tools container image for cluster
+  ansible.builtin.command: oc adm release info --image-for='tools'
+  register: tools_sha_output
+
+- name: Get node name
+  ansible.builtin.shell: oc get machine -l "machine.openshift.io/cluster-api-machineset={{ machineset_name }}" -n openshift-machine-api -ojson | jq '.items[0].status.nodeRef.name' | sed 's/"//g'
+  register: node_name_output
+
+- name: Set for use in template
+  set_fact:
+    node_name: "{{ node_name_output.stdout }}"
+    tools_sha: "{{ tools_sha_output.stdout }}"
+
+- name: Render oc run patch
+  set_fact:
+    oc_run_patch: "{{ lookup('template', run_find_template_path) }}"
+
+- name: Get device mapping
+  ansible.builtin.shell: oc run {{ default_run_pod_name }} --privileged=true --quiet=true --rm=true --restart='Never' -it --overrides='{{ oc_run_patch | to_json }}' --image={{ tools_sha }}
+  register: oc_run
+
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ build_output_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Build device_info
+  vars:
+    parsed: "{{ item | regex_search(device_regex, '\\1', '\\2', '\\3') | list}}"
+  set_fact:
+   device_info: "{{ device_info | default( [] ) + [ 
+                    { 
+                      'pci_address': parsed[0],
+                      'interface': parsed[1],
+                      'mac_address': parsed[2],
+                      'net': parsed[2]
+                     } ]  }}"
+  loop: "{{ oc_run.stdout_lines }}"
+  when: item | regex_search(device_regex, '\\1', '\\2', '\\3')
+
+- name: Fill in additional device_info
+  vars:
+   pci_address: "{{ item.pci_address }}"
+   net_name: "{{ mac_map[ item.mac_address ] }}"
+  set_fact:
+   nads: "{{ nads | default([]) + [ { 'net': mac_map[ item.mac_address ], 'data': lookup('template', network_attachment_path) } ] }}"
+  loop: "{{ device_info  }}"
+  when: item.mac_address in mac_map 
+
+- name: Write machineset file
+  copy:
+    content: "{{ item.data }}"
+    dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ item.net }}-netattach.yaml"
+  loop: "{{ nads }}"
+

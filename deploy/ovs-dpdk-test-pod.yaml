@@ -2,11 +2,11 @@ kind: Pod
 apiVersion: v1
 metadata:
   name: ovs-dpdk-example
-  namespace: ovs-dpdk
+  namespace: default
   labels:
     app: httpd
   annotations:
-    k8s.v1.cni.cncf.io/networks: ovs-dpdk-net-1
+    k8s.v1.cni.cncf.io/networks: uplink1 
 spec:
   #nodeSelector:
   #  kubernetes.io/hostname: fdp-hsb6t-worker-0 

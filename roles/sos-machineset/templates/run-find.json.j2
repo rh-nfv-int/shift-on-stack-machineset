@@ -1,0 +1,48 @@
+{
+ "spec": {
+    "hostPID": true,
+    "hostNetwork": true,
+    "nodeSelector": { "kubernetes.io/hostname": "{{ node_name }}" },
+    "containers": [
+        {
+            "command": [
+                "find",
+                "/sys/class/net",
+                "-mindepth",
+                "1",
+                "-maxdepth",
+                "1",
+                "!",
+                "-name",
+                "veth*",
+                "-printf",
+                "%l_",
+                "-execdir",
+                "cat",
+                "{}/address",
+                ";"
+            ],
+            "securityContext": {
+              "privileged": true,
+              "runAsUser": 0
+            },
+            "stdin": true,
+            "image": "{{tools_sha}}",
+            "name": "fdp",
+            "volumeMounts": [{
+            "mountPath": "/host",
+                "name": "host"
+            }]
+        }
+    ],        
+    "volumes": [
+        {
+            "name": "host",
+            "hostPath": {
+                "path": "/",
+                "type": "Directory"
+            }
+        }
+    ]
+ }
+}

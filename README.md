@@ -15,6 +15,47 @@ networks can be specified that will be attached to the worker nodes.
    ```
 
 4. `metadata.json` file created by the Openshift cluster install
+5. A running OCP 4.9+ cluster
+
+## Deploy Performance Add-On Operator (PAO)
+
+The following script deploys the **PAO**
+
+``./deploy/pao-deploy.sh``
+
+Look inside the script to see the necessary steps.
+
+Wait for the *performanceprofile* to be applied.
+
+Check that the fast datapath nodes now have hugpages.
+
+``oc get nodes -l 'node-role.kubernetes.io/performance=fdp' -ojson | jq '.items[].status.allocatable``
+
+```json
+{
+  "attachable-volumes-cinder": "256",
+  "cpu": "6",
+  "ephemeral-storage": "25678828Ki",
+  "hugepages-1Gi": "8Gi",
+  "hugepages-2Mi": "0",
+  "memory": "6893468Ki",
+  "pods": "250"
+}
+{
+  "attachable-volumes-cinder": "256",
+  "cpu": "6",
+  "ephemeral-storage": "25678828Ki",
+  "hugepages-1Gi": "8Gi",
+  "hugepages-2Mi": "0",
+  "memory": "6893468Ki",
+  "pods": "250"
+}
+```
+
+`"hugepages-1Gi": "8Gi",` indicates the presence of hugepages on the node.
+
+An ansible playbook is provided that generates a MachineSet file that can be used to deploy
+workers with the specified additional networks.
 
 ## Configuration
 
@@ -138,41 +179,35 @@ The corresponding MachineSet file will be created in: ``./build/${infraID}-${wor
 
 ``oc apply -f ./build/${infraID}-${worker_role}-machineset.yaml``
 
-Wait for completion.
+Wait for completion.  At this point, the *machine-api* will deploy the additional worker nodes as specified
+in the MachineSet file.
 
-## Deploy Performance Add-On Operator (PAO)
+## Preparing to use additional networks
 
-The following script deploys the **PAO**
+A second Ansible playbook is provided that generates *network-attachment-definition* files for the **ovs-dpdk**
+additional networks.  The script will only generate network-attachement-definitions for virtio network attachments.
+SR-IOV networks will be skipped as SR-IOV is handled by the *sriov-network-operator*.  An example generated
+NetworkAttachmentDefinition is below:
 
-``./deploy/pao-deploy.sh``
-
-Look inside the script to see the necessary steps.
-
-Wait for the *performanceprofile* to be applied.
-
-Check that the fast datapath nodes now have hugpages.
-
-``oc get nodes -l 'node-role.kubernetes.io/performance=fdp' -ojson | jq '.items[].status.allocatable``
-
-```json
-{
-  "attachable-volumes-cinder": "256",
-  "cpu": "6",
-  "ephemeral-storage": "25678828Ki",
-  "hugepages-1Gi": "8Gi",
-  "hugepages-2Mi": "0",
-  "memory": "6893468Ki",
-  "pods": "250"
-}
-{
-  "attachable-volumes-cinder": "256",
-  "cpu": "6",
-  "ephemeral-storage": "25678828Ki",
-  "hugepages-1Gi": "8Gi",
-  "hugepages-2Mi": "0",
-  "memory": "6893468Ki",
-  "pods": "250"
-}
+```yaml
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: "uplink1"
+spec:
+  config: |-
+    {
+      "cniVersion": "0.3.1",
+      "name": "uplink1",
+      "type": "host-device",
+      "pciBusId": "0000:00:04.0",
+      "ipam": { }
+    }
 ```
 
-`"hugepages-1Gi": "8Gi",` indicates the presence of hugepages on the node.
+The script operates by querying both *OpenStack* and *OpenShift* and matching mac addresses between the environments.  Matched
+mac addresses allow the determination of the pci addresses of the connected additional networks.
+
+## Generating NetworkAttachMentDefinitions
+
+``ansible-playbook gen.yaml -e cluster_metadata_path=/home/kni/sos-fdp/build-artifacts/metadata.json -i ./inventory.yaml``

@@ -11,7 +11,13 @@ resource_names: ""
 
 build_output_dir: "build"
 
+device_regex: '.*devices/pci[^/]+/([^/]+)/virtio.*/net/([^_]+)_([a-f0-9:]+)'
+
 machineset_template_path: "machineset.yaml.j2"
+run_find_template_path: "run-find.json.j2"
+default_run_pod_name: "list-interfaces"
+
+network_attachment_path: "network-attachment.yaml.j2"
 
 mc_name: "99-vhostuser-bind"
 mc_file_path: "mc.yaml.j2"

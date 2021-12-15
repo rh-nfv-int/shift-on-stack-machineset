@@ -1,0 +1,7 @@
+---
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - include_role:
+        name: sos-machineset
+        tasks_from: gen

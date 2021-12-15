@@ -1,5 +1,7 @@
-[Unit]
+Unit]
 Description=Vhostuser Interface vfio-pci Bind
+Wants=network-online.target
+After=network-online.target ignition-firstboot-complete.service
 
 [Service]
 Type=oneshot
