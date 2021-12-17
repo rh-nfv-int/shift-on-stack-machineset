@@ -2,6 +2,8 @@
 
 # - name: test1
 #   set_fact:
+#     metadata:
+#       infraID: "foo"
 #     stdout_lines: 
 #        - "../../devices/virtual/net/tun0_c6:a8:de:30:46:f2"
 #        - "../../devices/pci0000:00/0000:00:07.0/net/ens7_fa:16:3e:31:89:2b"
@@ -40,9 +42,10 @@
 #       mac_address: fa:16:3e:67:69:8f
 #       net: fa:16:3e:67:69:8f
 #       pci_address: '0000:00:05.0'
-
+# - fail:
 
 # Parse metadata.json to extract cluster-related data
+# Specifically, extract the infraID
 - name: parse metadata.json produced by the cluster deployment
   set_fact:
     metadata: "{{ lookup('file', cluster_metadata_path) |from_json }}"
@@ -51,10 +54,12 @@
   set_fact:
     infrastructure_id: "{{ metadata.infraID }}"
 
-- name: Machine name
+- name: Set MachineSet name
   set_fact:
     machineset_name: "{{ infrastructure_id }}-worker"
+  when: machineset_name is undefined
 
+# Query additional networks specified in the inventory
 - name: Gather and verify information about additional networks
   openstack.cloud.networks_info:
     name: "{{ item.name }}"
@@ -64,6 +69,7 @@
   failed_when: net_info.openstack_networks|length == 0
 
 # Rebuild additional networks information using queried data
+# ASSUME that each network is unique and only has one subnet!
 - name: Build additionalNetworks with port lookups of UUID from additional_networks
   set_fact:
     additional_networks_mod: "{{ additional_networks_mod | default([]) + [ { 
@@ -80,6 +86,7 @@
     loop_var: net
     index_var: index
 
+# Query OpenStack ports and filter by specific networks
 - name: Gather all ports connected to additional networks
   openstack.cloud.port_info:
     cloud: "{{ openstack_cloud }}"
@@ -97,6 +104,8 @@
              }}"
   loop: "{{ port_info.results }}"
 
+# For every port connected to the additional networks, record the unique
+# mac address
 - name: Build mac/port dictionary
   set_fact:
     mac_map: "{{ mac_map | default({}) | combine ({ item.1.mac_address : item.0.item.name }) }}"
@@ -104,10 +113,15 @@
   loop_control:
     label: "{{ item.0.item.name }}"
 
+# Query OpenShift for the tools container for the current version
 - name: Lookup tools container image for cluster
   ansible.builtin.command: oc adm release info --image-for='tools'
   register: tools_sha_output
 
+# Query OpenShift for the list of Nodes related to the MachineSet
+# Extract the name of the first node in the list of Nodes
+# This code assumes that all Nodes in the MachineSet have identical 
+# pci address mappings.  
 - name: Get node name
   ansible.builtin.shell: oc get machine -l "machine.openshift.io/cluster-api-machineset={{ machineset_name }}" -n openshift-machine-api -ojson | jq '.items[0].status.nodeRef.name' | sed 's/"//g'
   register: node_name_output
@@ -117,10 +131,24 @@
     node_name: "{{ node_name_output.stdout }}"
     tools_sha: "{{ tools_sha_output.stdout }}"
 
+# Build a JSON patch to run on the Node
 - name: Render oc run patch
   set_fact:
     oc_run_patch: "{{ lookup('template', run_find_template_path) }}"
 
+# Query the representative node to extract all interface information
+# An example of the returned data is below:
+#     stdout_lines: 
+#        - "../../devices/virtual/net/tun0_c6:a8:de:30:46:f2"
+#        - "../../devices/pci0000:00/0000:00:07.0/net/ens7_fa:16:3e:31:89:2b"
+#        - "../../devices/pci0000:00/0000:00:05.0/virtio2/net/ens5_fa:16:3e:67:69:8f"
+#        - "../../devices/pci0000:00/0000:00:03.0/virtio0/net/ens3_fa:16:3e:47:ab:35"
+#        - "../../devices/virtual/net/br0_9e:5e:32:1f:8e:4e"
+#        - "../../devices/virtual/net/ovs-system_a2:ee:28:28:a9:c7"
+#        - "../../devices/pci0000:00/0000:00:08.0/net/ens8_fa:16:3e:ab:f0:be"
+#        - "../../devices/virtual/net/vxlan_sys_4789_ca:9d:9d:d5:87:9f"
+#        - "../../devices/virtual/net/lo_00:00:00:00:00:00"
+#        - "../../devices/pci0000:00/0000:00:04.0/virtio1/net/ens4_fa:16:3e:f9:f3:87"
 - name: Get device mapping
   ansible.builtin.shell: oc run {{ default_run_pod_name }} --privileged=true --quiet=true --rm=true --restart='Never' -it --overrides='{{ oc_run_patch | to_json }}' --image={{ tools_sha }}
   register: oc_run
@@ -145,6 +173,7 @@
   loop: "{{ oc_run.stdout_lines }}"
   when: item | regex_search(device_regex, '\\1', '\\2', '\\3')
 
+# Fill in network name by matching mac address
 - name: Fill in additional device_info
   vars:
    pci_address: "{{ item.pci_address }}"
@@ -154,9 +183,34 @@
   loop: "{{ device_info  }}"
   when: item.mac_address in mac_map 
 
-- name: Write machineset file
+- name: Write network attachment definition file(s)
   copy:
     content: "{{ item.data }}"
     dest: "{{build_output_dir}}/{{ metadata.infraID }}-{{ item.net }}-netattach.yaml"
   loop: "{{ nads }}"
 
+- name: add service file to list
+  set_fact:
+    systemd:
+      - name: "{{ bind_service_name }}"
+        source: "{{ lookup('file', bind_service_file_path) }}"
+
+- name: Extract pci_addresses for additional networks
+  set_fact:
+    pci_addresses: "{{ device_info | map( attribute='pci_address' ) | join(' ') }}"
+
+- name: create contents list
+  set_fact:
+    machine_config_files:
+      - name: "{{ vfio_module_filename }}"
+        source: "{{ lookup('file', vfio_module_file_path) }}"
+      - name: "{{ exec_script_filename }}"
+        source: "{{ lookup('file', exec_script_file_path) }}"
+        mode: "0744"
+      - name: "{{ pci_addresses_conf_filename }}"
+        source: "{{ lookup('template', pci_addresses_conf_file_path) }}"
+
+- name: create mc config file
+  copy:
+    dest: "{{ build_output_dir }}/{{ metadata.infraID }}-machine-config.yaml"
+    content: "{{ lookup('template', mc_file_path) }}"

@@ -184,6 +184,10 @@ in the MachineSet file.
 
 ## Preparing to use additional networks
 
+There are two method to adding a host-device secondary network.  First, the Cluster Network Operator Cluster
+Network can be patched to add *additionalNetworks*.  Second, *NetworkAttachmentDefinitions* can be applied 
+that specify the network name and host-device specifications.
+
 A second Ansible playbook is provided that generates *network-attachment-definition* files for the **ovs-dpdk**
 additional networks.  The script will only generate network-attachement-definitions for virtio network attachments.
 SR-IOV networks will be skipped as SR-IOV is handled by the *sriov-network-operator*.  An example generated
@@ -206,8 +210,55 @@ spec:
 ```
 
 The script operates by querying both *OpenStack* and *OpenShift* and matching mac addresses between the environments.  Matched
-mac addresses allow the determination of the pci addresses of the connected additional networks.
+mac addresses allow the determination of the pci addresses of the connected additional networks.  The script queries both
+OpenStack and OpenShift to gather the necessary information.
 
 ## Generating NetworkAttachMentDefinitions
 
+The following generates the NetworkAttachmentDefinitions for ovs-dpdk connected additional networks.
+
 ``ansible-playbook gen.yaml -e cluster_metadata_path=/home/kni/sos-fdp/build-artifacts/metadata.json -i ./inventory.yaml``
+
+## Applying the NetworkAttachmentDefinitions
+
+``oc apply -f build/<na-file-name.yaml>``
+
+At this point, the additional networks have been defined using the NetworkAttachmentDefinition.
+
+The following is an example Pod that uses the additional networks.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: testpmd
+ namespace: default
+ annotations:
+   k8s.v1.cni.cncf.io/networks: "uplink1,uplink2"
+spec:
+ containers:
+ - name: testpmd
+   command: ["/bin/sh"]
+   args: ["-c", "testpmd -l $(taskset -pc 1 | cut -d: -f2) --in-memory -w 00:04.0 -w 00:05.0 --socket-mem 1024 -n 4 -- --nb-cores=1 --auto-start --forward-mode=mac --stats-period 10"]
+   image: registry.redhat.io/openshift4/dpdk-base-rhel8:v4.6
+   securityContext:
+     privileged: true
+     runAsUser: 0
+   resources:
+     requests:
+       memory: 1000Mi
+       hugepages-1Gi: 3Gi
+       cpu: '3'
+     limits:
+       hugepages-1Gi: 3Gi
+       cpu: '3'
+       memory: 1000Mi
+   volumeMounts:
+     - mountPath: /dev/hugepages
+       name: hugepage
+       readOnly: False
+ volumes:
+ - name: hugepage
+   emptyDir:
+     medium: HugePages
+```

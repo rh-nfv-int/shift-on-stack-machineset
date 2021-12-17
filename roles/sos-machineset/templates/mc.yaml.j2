@@ -3,7 +3,7 @@ kind: MachineConfig
 metadata:
   labels:
     machineconfiguration.openshift.io/role: worker
-  name: {{ mc_name|default('99-dhcp-reconfigure') }}
+  name: {{ mc_name|default('99-vfio-bind') }}
 spec:
   config:
     ignition:
@@ -20,7 +20,7 @@ spec:
 {% endif %}
     storage:
       files:
-{% for item in contents %}
+{% for item in machine_config_files %}
       - contents:
           source: data:text/plain;charset=utf-8;base64,{{ item.source|b64encode }}
         filesystem: root

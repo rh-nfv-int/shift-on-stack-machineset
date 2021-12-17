@@ -35,8 +35,8 @@ exec_script_filename: "//usr/local/bin/vhostuser"
 exec_script_file_path: "vhostuser"
 
 # network ids conf
-nwid_conf_filename: "/etc/vhostuser-bind.conf"
-nwid_conf_file_path: "vhostuser-bind.conf.j2"
+pci_addresses_conf_filename: "/etc/vhostuser-bind.conf"
+pci_addresses_conf_file_path: "vhostuser-bind.conf.j2"
 
 contents: []
 systemd: []

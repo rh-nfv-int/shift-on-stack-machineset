@@ -1,80 +1,56 @@
 #!/bin/bash
 
-# NOTE: jq is present in the coreos worker created, find if available in all versions
-
 set -e
 if [[ "$#" -lt 1 ]]; then
-    echo "Nework ID not provided, nothing to do"
+    echo "PCI Addresses not provided, nothing to do"
     exit
 fi
 
-list='{"resourceList":[]}'
+# shellcheck disable=SC1091
 source /etc/vhostuser-bind.conf
 
-NW_DATA="/var/config/openstack/latest/network_data.json"
-function parseNetwork() {
-    local nwid=$1
-    local pcis=()
-    local entry='{"resourceName":"","selectors":{"drivers":["vfio-pci"],"pciAddresses":[]}}'
-    res=$(jq 'to_entries[]|select(.key == "'"$nwid"'")|.value' <<< $MAP)
-    echo "Network ID is $nwid and resource name is $res"
-    links=$(jq '.networks[] | select(.network_id == "'$nwid'") | .link' $NW_DATA)
-    entry=$(jq -r '.resourceName = '"$res" <<< $entry)
-    if [ ${#links} -gt 0 ]; then
-        for link in $links; do
-            echo "Link Name: $link"
-            mac=$(jq -r '.links[] | select(.id == '$link') | .ethernet_mac_address'  $NW_DATA)
-            if [ -n $mac ]; then
-                pci=$(bindDriver $mac)
-                pci_ret=$?
-                if [[ "$pci_ret" -eq 0 ]]; then
-                    entry=$(jq -c -r '.selectors.pciAddresses += ["'$pci'"]' <<< $entry)
-                fi
-            fi
-        done
-    fi
-    list=$(jq -c -r '.resourceList += ['$entry']' <<< $list)
-}
-
 function bindDriver() {
-    local mac=$1
-    local res=$2
-    for file in /sys/class/net/*; do
-        dev_mac=$(cat $file/address)
-        if [[ "$mac" == "$dev_mac" ]]; then
-            name=${file##*\/}
-            bus_str=$(ethtool -i $name | grep bus)
-            dev_t=${bus_str#*:}
-            dev=${dev_t#[[:space:]]}
+    local dev=$1
 
-            echo $dev
+    devlink="/sys/bus/pci/devices/$dev"
 
-            devlink="/sys/bus/pci/devices/$dev"
-            syspath=$(realpath "$devlink")
-            if [ ! -f "$syspath/driver/unbind" ]; then
-                echo "File $syspath/driver/unbind not found"
-                return 1
-            fi
-            echo "$dev">"$syspath/driver/unbind"
-
-            if [ ! -f "$syspath/driver_override" ]; then
-                echo "File $syspath/driver_override not found"
-                return 1
-            fi
-            echo "vfio-pci">"$syspath/driver_override"
-
-            if [ ! -f "/sys/bus/pci/drivers/vfio-pci/bind" ]; then
-                echo "File /sys/bus/pci/drivers/vfio-pci/bind not found"
-                return 1
-            fi
-            echo "$dev">"/sys/bus/pci/drivers/vfio-pci/bind"
-	    return 0
+    if [[ -f "$devlink" ]]; then
+        syspath=$(realpath "$devlink")
+        if [ ! -f "$syspath/driver/unbind" ]; then
+            echo "File $syspath/driver/unbind not found"
+            return 1
         fi
-    done
+        if ! echo "$dev" >"$syspath/driver/unbind"; then
+            return 1
+        fi
+
+        if [ ! -f "$syspath/driver_override" ]; then
+            echo "File $syspath/driver_override not found"
+            return 1
+        fi
+        if ! echo "vfio-pci" >"$syspath/driver_override"; then
+            return 1
+        fi
+
+        if [ ! -f "/sys/bus/pci/drivers/vfio-pci/bind" ]; then
+            echo "File /sys/bus/pci/drivers/vfio-pci/bind not found"
+            return 1
+        fi
+        if ! echo "$dev" >"/sys/bus/pci/drivers/vfio-pci/bind"; then
+            return 1
+        fi
+        return 0
+    else
+        echo "PCI device $devlink does not exist, skipping..."
+    fi
+
+    return 1
 }
 
-for nwid in "$@"; do
-    parseNetwork $nwid
+# The pci addresses for each network to be bound to the vfio driver
+# has been set in the /etc/vhostuser-bind.conf as a space-seperated
+# string. Loop through the pci addresses and bind to the vfio-pci
+# driver.
+for pci_address in "$@"; do
+    bindDriver "$pci_address"
 done
-mkdir -p /var/lib/vhostuser/
-echo $list>/var/lib/vhostuser/vhost.json
